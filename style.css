@@ -79,8 +79,8 @@ body {
   gap: 8px;
 }
 
-.field { display: grid; gap: 4px; font-size: .9rem; color: var(--muted); margin-bottom: 10px; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: .9rem; color: var(--muted); margin-bottom: 10px; min-width: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 
 input, textarea {
   font: inherit;
@@ -91,8 +91,18 @@ input, textarea {
   border-radius: 8px;
   padding: 10px 12px;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
 }
+/* iOS Safari date/time inputs have an intrinsic min width that overflows */
+input[type="date"], input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  text-align: left;
+}
+input::-webkit-date-and-time-value { text-align: left; }
 textarea { resize: vertical; }
 input:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
 

@@ -374,7 +374,13 @@ function init() {
 
   $('whatsapp').addEventListener('click', () => {
     if (!state.schedule) return;
-    window.open(`https://wa.me/?text=${encodeURIComponent(shareText(state.schedule))}`, '_blank', 'noopener');
+    const url = `https://wa.me/?text=${encodeURIComponent(shareText(state.schedule))}`;
+    // On mobile, a new tab stays at about:blank after handing off to the WhatsApp app
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      location.href = url;
+    } else {
+      window.open(url, '_blank', 'noopener');
+    }
   });
   $('copy').addEventListener('click', () => {
     if (state.schedule) copyText(shareText(state.schedule));
