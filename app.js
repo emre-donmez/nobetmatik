@@ -170,9 +170,12 @@ function slotScore(len) {
   return shape + range + Math.abs(len - 90) / 1000;
 }
 
-// Dilim sayısı, herkes eşit sayıda dilim alacak şekilde (S*K, N'nin katı) seçilir.
-function computeSlots(n, k, total) {
-  const base = n / gcd(n, k);
+// Dilim sayısı, herkes eşit sayıda nokta ve güzergâh görevi alacak şekilde seçilir.
+function computeSlots(n, p, r, total) {
+  const a = n / gcd(n, p);
+  const b = n / gcd(n, r * 2);
+  const strict = (a * b) / gcd(a, b);
+  const base = total / strict >= MIN_SLOT ? strict : n / gcd(n, p + r * 2);
   let best = null;
   for (let m = 1; ; m++) {
     const count = base * m;
@@ -185,28 +188,72 @@ function computeSlots(n, k, total) {
   return best;
 }
 
+// Her dilimdeki kişilerden hangilerinin noktaya gideceğini max-flow ile seçer;
+// herkes en fazla ceil(S*P/N) nokta görevi alır, kalan görevleri güzergâhtır.
+function pickPointHolders(sel, p, n) {
+  const count = sel.length;
+  const cap = Math.ceil((count * p) / n);
+  const src = 0, sink = count + n + 1;
+  const graph = Array.from({ length: sink + 1 }, () => []);
+  const addEdge = (u, v, c) => {
+    graph[u].push({ to: v, cap: c, rev: graph[v].length });
+    graph[v].push({ to: u, cap: 0, rev: graph[u].length - 1 });
+  };
+  sel.forEach((ids, i) => {
+    addEdge(src, 1 + i, p);
+    ids.forEach((x) => addEdge(1 + i, 1 + count + x, 1));
+  });
+  for (let x = 0; x < n; x++) addEdge(1 + count + x, sink, cap);
+
+  for (;;) {
+    const prev = new Array(sink + 1).fill(null);
+    prev[src] = { node: -1 };
+    const queue = [src];
+    while (queue.length && !prev[sink]) {
+      const u = queue.shift();
+      graph[u].forEach((e, idx) => {
+        if (e.cap > 0 && !prev[e.to]) {
+          prev[e.to] = { node: u, idx };
+          queue.push(e.to);
+        }
+      });
+    }
+    if (!prev[sink]) break;
+    for (let v = sink; v !== src; v = prev[v].node) {
+      const e = graph[prev[v].node][prev[v].idx];
+      e.cap--;
+      graph[v][e.rev].cap++;
+    }
+  }
+
+  return sel.map((_, i) => new Set(
+    graph[1 + i].filter((e) => e.to > count && e.to < sink && e.cap === 0).map((e) => e.to - 1 - count)));
+}
+
 function buildSchedule(people, points, routes, start, total) {
   const n = people.length;
   const k = points.length + routes.length * 2;
-  const { count, len } = computeSlots(n, k, total);
+  const { count, len } = computeSlots(n, points.length, routes.length, total);
   const duty = people.map(() => ({ minutes: 0, items: [] }));
-  const slots = [];
 
-  for (let i = 0; i < count; i++) {
+  // Döngüsel sıra dinlenme sürelerini eşit dağıtır; roller ayrıca dengelenir.
+  const sel = Array.from({ length: count }, (_, i) => Array.from({ length: k }, (_, j) => (i * k + j) % n));
+  const holders = pickPointHolders(sel, points.length, n);
+
+  const slots = sel.map((ids, i) => {
     const from = start + Math.round((i * total) / count);
     const to = start + Math.round(((i + 1) * total) / count);
-    const ids = Array.from({ length: k }, (_, j) => (i * k + j) % n);
-    const pointIds = ids.slice(0, points.length);
-    const routeIds = routes.map((_, r) => ids.slice(points.length + r * 2, points.length + r * 2 + 2));
-    slots.push({ from, to, points: pointIds, routes: routeIds });
-
+    const pointIds = ids.filter((x) => holders[i].has(x));
+    const routeFlat = ids.filter((x) => !holders[i].has(x));
+    const routeIds = routes.map((_, r) => routeFlat.slice(r * 2, r * 2 + 2));
     const add = (p, role) => {
       duty[p].minutes += to - from;
       duty[p].items.push({ from, to, role });
     };
     pointIds.forEach((p, idx) => add(p, points[idx]));
     routeIds.forEach((pair, idx) => pair.forEach((p) => add(p, routes[idx])));
-  }
+    return { from, to, points: pointIds, routes: routeIds };
+  });
 
   return { people, points, routes, start, total, slots, duty, len, count, perPerson: (count * k) / n };
 }
